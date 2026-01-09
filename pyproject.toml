@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-deployer"
+version = "0.1.0"
+description = "AI-powered Dockerfile generation and Docker image building using Gemini"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "google-genai>=1.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+agent-deployer = "agent_deployer.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent_deployer"]
