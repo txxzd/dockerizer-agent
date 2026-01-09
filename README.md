@@ -23,15 +23,6 @@ agent-deployer build <path> -t <tag> -q          # Quiet mode (output URI only)
 agent-deployer build <path> -t <tag> --regenerate  # Force regenerate Dockerfile
 ```
 
-## Test: Python Backend
-
-```bash
-agent-deployer build sample_project -t sample-app:latest
-docker run -d -p 8080:5000 --name sample-test sample-app:latest
-curl http://localhost:8080/
-docker stop sample-test && docker rm sample-test
-```
-
 ## Test: React Chatbot
 
 ```bash
