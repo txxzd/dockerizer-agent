@@ -30,17 +30,10 @@ def cmd_analyze(args: argparse.Namespace) -> int:
 
 def cmd_generate(args: argparse.Namespace) -> int:
     try:
-        analyzer = ProjectAnalyzer(args.project_path)
-        context = analyzer.analyze()
-
-        print("Analyzing project structure...")
+        print("Starting Dockerfile agent...")
         agent = DockerfileAgent()
-
-        print("Generating Dockerfile...")
-        output_path = args.output or str(Path(args.project_path) / "Dockerfile")
-        saved_path = agent.generate_and_save(context, output_path)
-
-        print(f"Dockerfile generated: {saved_path}")
+        result = agent.run(args.project_path)
+        print(f"\nDockerfile generated: {result}")
         return 0
     except ValueError as e:
         print(f"Configuration error: {e}", file=sys.stderr)
@@ -58,18 +51,13 @@ def cmd_build(args: argparse.Namespace) -> int:
             print(msg)
 
     try:
-        analyzer = ProjectAnalyzer(args.project_path)
-        context = analyzer.analyze()
-
         dockerfile_path = Path(args.project_path) / "Dockerfile"
 
         if not dockerfile_path.exists() or args.regenerate:
-            log("Analyzing project structure...")
+            log("Starting Dockerfile agent...")
             agent = DockerfileAgent()
-
-            log("Generating Dockerfile...")
-            agent.generate_and_save(context)
-            log(f"Dockerfile generated: {dockerfile_path}")
+            result = agent.run(args.project_path, verbose=not quiet)
+            log(f"Dockerfile generated: {result}")
 
         log("\nBuilding Docker image...")
         builder = DockerBuilder(args.project_path)
@@ -121,11 +109,6 @@ def main() -> int:
     generate_parser.add_argument(
         "project_path",
         help="Path to the project directory",
-    )
-    generate_parser.add_argument(
-        "-o",
-        "--output",
-        help="Output path for the Dockerfile (default: <project>/Dockerfile)",
     )
 
     build_parser = subparsers.add_parser(

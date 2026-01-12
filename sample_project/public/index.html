@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gemini Chat</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      :root {
+        --primary: #1a73e8;
+        --primary-dark: #1557b0;
+        --bg-main: #f8f9fa;
+        --bg-chat: #ffffff;
+        --bg-user: #1a73e8;
+        --bg-assistant: #f1f3f4;
+        --text-primary: #202124;
+        --text-secondary: #5f6368;
+        --text-user: #ffffff;
+        --border: #e8eaed;
+        --shadow: rgba(0, 0, 0, 0.1);
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: var(--bg-main);
+        color: var(--text-primary);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* Header */
+      .header {
+        background: var(--bg-chat);
+        border-bottom: 1px solid var(--border);
+        padding: 16px 24px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .header-icon {
+        width: 40px;
+        height: 40px;
+        background: linear-gradient(135deg, #4285f4, #34a853, #fbbc04, #ea4335);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .header-icon svg {
+        width: 24px;
+        height: 24px;
+        fill: white;
+      }
+
+      .header-content h1 {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .header-content p {
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+
+      /* Chat Container */
+      .chat-container {
+        flex: 1;
+        overflow-y: auto;
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .welcome-message {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--text-secondary);
+      }
+
+      .welcome-message h2 {
+        font-size: 24px;
+        font-weight: 500;
+        color: var(--text-primary);
+        margin-bottom: 8px;
+      }
+
+      .welcome-message p {
+        font-size: 15px;
+        max-width: 400px;
+        margin: 0 auto;
+      }
+
+      /* Message Styles */
+      .message {
+        display: flex;
+        gap: 12px;
+        max-width: 800px;
+        margin: 0 auto;
+        width: 100%;
+        animation: fadeIn 0.3s ease;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .message.user {
+        flex-direction: row-reverse;
+      }
+
+      .avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .message.user .avatar {
+        background: var(--bg-user);
+        color: var(--text-user);
+      }
+
+      .message.assistant .avatar {
+        background: linear-gradient(135deg, #4285f4, #34a853, #fbbc04, #ea4335);
+      }
+
+      .message.assistant .avatar svg {
+        width: 20px;
+        height: 20px;
+        fill: white;
+      }
+
+      .bubble {
+        padding: 12px 16px;
+        border-radius: 18px;
+        line-height: 1.5;
+        font-size: 15px;
+        max-width: calc(100% - 60px);
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+
+      .message.user .bubble {
+        background: var(--bg-user);
+        color: var(--text-user);
+        border-bottom-right-radius: 4px;
+      }
+
+      .message.assistant .bubble {
+        background: var(--bg-assistant);
+        color: var(--text-primary);
+        border-bottom-left-radius: 4px;
+      }
+
+      /* Typing Indicator */
+      .typing-indicator {
+        display: flex;
+        gap: 4px;
+        padding: 16px;
+      }
+
+      .typing-indicator span {
+        width: 8px;
+        height: 8px;
+        background: var(--text-secondary);
+        border-radius: 50%;
+        animation: bounce 1.4s infinite ease-in-out both;
+      }
+
+      .typing-indicator span:nth-child(1) {
+        animation-delay: -0.32s;
+      }
+
+      .typing-indicator span:nth-child(2) {
+        animation-delay: -0.16s;
+      }
+
+      @keyframes bounce {
+        0%, 80%, 100% {
+          transform: scale(0);
+        }
+        40% {
+          transform: scale(1);
+        }
+      }
+
+      /* Input Area */
+      .input-container {
+        background: var(--bg-chat);
+        border-top: 1px solid var(--border);
+        padding: 16px 24px 24px;
+      }
+
+      .input-wrapper {
+        max-width: 800px;
+        margin: 0 auto;
+        display: flex;
+        gap: 12px;
+        align-items: flex-end;
+        background: var(--bg-main);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 8px 8px 8px 20px;
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+
+      .input-wrapper:focus-within {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+      }
+
+      textarea {
+        flex: 1;
+        border: none;
+        background: transparent;
+        font-family: inherit;
+        font-size: 15px;
+        line-height: 1.5;
+        resize: none;
+        outline: none;
+        min-height: 24px;
+        max-height: 120px;
+        color: var(--text-primary);
+      }
+
+      textarea::placeholder {
+        color: var(--text-secondary);
+      }
+
+      .send-button {
+        width: 40px;
+        height: 40px;
+        border: none;
+        background: var(--primary);
+        color: white;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.2s, transform 0.1s;
+        flex-shrink: 0;
+      }
+
+      .send-button:hover:not(:disabled) {
+        background: var(--primary-dark);
+      }
+
+      .send-button:active:not(:disabled) {
+        transform: scale(0.95);
+      }
+
+      .send-button:disabled {
+        background: var(--border);
+        cursor: not-allowed;
+      }
+
+      .send-button svg {
+        width: 20px;
+        height: 20px;
+        fill: currentColor;
+      }
+
+      .footer-text {
+        text-align: center;
+        font-size: 12px;
+        color: var(--text-secondary);
+        margin-top: 12px;
+        max-width: 800px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      /* Scrollbar Styling */
+      .chat-container::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .chat-container::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      .chat-container::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 4px;
+      }
+
+      .chat-container::-webkit-scrollbar-thumb:hover {
+        background: var(--text-secondary);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="header">
+      <div class="header-icon">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+        </svg>
+      </div>
+      <div class="header-content">
+        <h1>Gemini Chat</h1>
+        <p>Powered by Google Gemini 2.0 Flash</p>
+      </div>
+    </header>
+
+    <div class="chat-container" id="chat">
+      <div class="welcome-message" id="welcome">
+        <h2>Hello! How can I help you today?</h2>
+        <p>I'm powered by Google's Gemini AI. Ask me anything and I'll do my best to assist you.</p>
+      </div>
+    </div>
+
+    <div class="input-container">
+      <div class="input-wrapper">
+        <textarea
+          id="prompt"
+          placeholder="Message Gemini..."
+          rows="1"
+          onInput="this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 120) + 'px';"
+        ></textarea>
+        <button class="send-button" id="send" aria-label="Send message">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+          </svg>
+        </button>
+      </div>
+      <p class="footer-text">Gemini can make mistakes. Consider checking important information.</p>
+    </div>
+
+    <script>
+      const button = document.getElementById("send");
+      const prompt = document.getElementById("prompt");
+      const chat = document.getElementById("chat");
+      const welcome = document.getElementById("welcome");
+      const MAX_TURNS = 10;
+      const MAX_MESSAGES = MAX_TURNS * 2;
+      const messages = [];
+
+      function createAvatar(role) {
+        const avatar = document.createElement("div");
+        avatar.className = "avatar";
+        if (role === "user") {
+          avatar.textContent = "U";
+        } else {
+          avatar.innerHTML = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+          </svg>`;
+        }
+        return avatar;
+      }
+
+      function createTypingIndicator() {
+        const message = document.createElement("div");
+        message.className = "message assistant";
+        message.id = "typing";
+
+        const avatar = createAvatar("assistant");
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        bubble.innerHTML = `<div class="typing-indicator"><span></span><span></span><span></span></div>`;
+
+        message.appendChild(avatar);
+        message.appendChild(bubble);
+        return message;
+      }
+
+      function renderMessage(role, content) {
+        if (welcome) {
+          welcome.remove();
+        }
+
+        const message = document.createElement("div");
+        message.className = `message ${role}`;
+
+        const avatar = createAvatar(role);
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        bubble.textContent = content;
+
+        if (role === "user") {
+          message.appendChild(bubble);
+          message.appendChild(avatar);
+        } else {
+          message.appendChild(avatar);
+          message.appendChild(bubble);
+        }
+
+        chat.appendChild(message);
+        chat.scrollTop = chat.scrollHeight;
+      }
+
+      function trimHistory() {
+        if (messages.length > MAX_MESSAGES) {
+          messages.splice(0, messages.length - MAX_MESSAGES);
+        }
+      }
+
+      function addMessage(role, content) {
+        messages.push({ role, content });
+        trimHistory();
+        renderMessage(role, content);
+      }
+
+      async function sendMessage() {
+        const text = prompt.value.trim();
+        if (!text) return;
+
+        addMessage("user", text);
+        prompt.value = "";
+        prompt.style.height = "auto";
+        button.disabled = true;
+
+        // Show typing indicator
+        const typing = createTypingIndicator();
+        chat.appendChild(typing);
+        chat.scrollTop = chat.scrollHeight;
+
+        try {
+          const response = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages }),
+          });
+          const data = await response.json();
+
+          // Remove typing indicator
+          typing.remove();
+
+          if (!response.ok) {
+            addMessage("assistant", data.error || "Something went wrong. Please try again.");
+            return;
+          }
+          addMessage("assistant", data.reply || "(Empty response)");
+        } catch (error) {
+          typing.remove();
+          addMessage("assistant", "Connection error. Please check your network and try again.");
+        } finally {
+          button.disabled = false;
+          prompt.focus();
+        }
+      }
+
+      button.addEventListener("click", sendMessage);
+
+      prompt.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+
+      prompt.focus();
+    </script>
+  </body>
+</html>

@@ -1,3 +1,4 @@
+import json
 import os
 from typing import Optional
 
@@ -5,36 +6,37 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-from agent_deployer.analyzer import ProjectContext
+from agent_deployer.tools import TOOL_DECLARATIONS, ToolExecutor
 
 load_dotenv()
 
 
 SYSTEM_PROMPT = """You are an expert at creating Dockerfiles for containerizing applications.
 
-Given a project's file structure and configuration files, generate an optimal Dockerfile.
+You have tools to explore the project. Follow this process:
+1. Call list_directory with path="." to see the project structure
+2. Read key config files (package.json, requirements.txt, go.mod, Cargo.toml, etc.)
+3. Check for existing Dockerfile or .dockerignore if needed
+4. When you understand the project, call write_dockerfile with the complete Dockerfile
 
-Follow these best practices:
-1. Use minimal base images (alpine variants when possible)
-2. Multi-stage builds: ONLY use for compiled languages (Go, Rust, Java, C/C++) where you copy a binary.
-   - For interpreted languages (Python, Node.js, Ruby): use single-stage builds because pip/npm packages
-     install to system directories that won't be copied with just "COPY --from=builder /app ."
-   - If using multi-stage for Python, you must copy the entire site-packages directory
-3. Run as non-root user for security (create user before switching)
-4. Order layers for optimal caching: copy dependency files first, install, then copy source
-5. Use .dockerignore patterns implicitly (don't COPY unnecessary files)
-6. Set appropriate WORKDIR
-7. Expose relevant ports based on the application type
-8. Use CMD for the main command (not ENTRYPOINT unless wrapping a specific binary)
-9. Health checks: use wget or curl depending on what's available in the base image
-   - Alpine images have wget by default, not curl
-10. Pin base image versions for reproducibility
+Rules for the Dockerfile:
+- Only COPY files that actually exist in the project
+- Use minimal base images (alpine variants when possible)
+- Multi-stage builds ONLY for compiled languages (Go, Rust, Java, C/C++)
+- For interpreted languages (Python, Node.js, Ruby): use single-stage builds
+- Order layers for caching: copy dependency manifests first, install deps, then copy source
+- Set a sensible WORKDIR (e.g., /app)
+- Expose the correct port based on the project config
+- Use CMD for the main process (avoid ENTRYPOINT unless strictly needed)
+- Run as non-root user when practical
+- Keep it simple and correct
 
-Output ONLY the Dockerfile content, no explanations or markdown formatting.
-Do not wrap in code blocks. Just raw Dockerfile content."""
+Output ONLY the Dockerfile content when calling write_dockerfile, no markdown or explanations."""
 
 
 class DockerfileAgent:
+    """An agentic Dockerfile generator that explores projects using tools."""
+
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
         if not self.api_key:
@@ -42,67 +44,72 @@ class DockerfileAgent:
                 "GEMINI_API_KEY not found. Set it as an environment variable or pass it directly."
             )
         self.client = genai.Client(api_key=self.api_key)
+        self.tools = types.Tool(function_declarations=TOOL_DECLARATIONS)
 
-    def _build_prompt(self, context: ProjectContext) -> str:
-        prompt_parts = [
-            "Analyze this project and generate an appropriate Dockerfile.\n",
-            f"Project root: {context.root_path}\n",
-            f"Total files: {context.total_files}\n",
-            "\n## File Extensions (count):\n",
+    def run(self, project_path: str, max_turns: int = 15, verbose: bool = True) -> str:
+        """
+        Run the agent loop until a Dockerfile is written.
+
+        Args:
+            project_path: Path to the project directory
+            max_turns: Maximum number of agent turns before stopping
+            verbose: Whether to print tool calls
+
+        Returns:
+            Path to the generated Dockerfile, or an error message
+        """
+        executor = ToolExecutor(project_path)
+
+        contents = [
+            types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=f"Generate a Dockerfile for the project at: {project_path}")],
+            )
         ]
 
-        for ext, count in sorted(context.extensions.items(), key=lambda x: -x[1]):
-            prompt_parts.append(f"  {ext}: {count}\n")
+        for _turn in range(max_turns):
+            response = self.client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    tools=[self.tools],
+                    temperature=0.2,
+                ),
+            )
 
-        prompt_parts.append("\n## File Tree:\n")
-        for file in context.file_tree[:200]:
-            prompt_parts.append(f"  {file}\n")
+            # Append assistant response to conversation
+            contents.append(response.candidates[0].content)
 
-        if len(context.file_tree) > 200:
-            prompt_parts.append(f"  ... and {len(context.file_tree) - 200} more files\n")
+            # Check for function calls
+            if not response.function_calls:
+                # No function call = agent is done or stuck
+                return response.text or "Agent completed without writing Dockerfile"
 
-        prompt_parts.append("\n## Configuration Files:\n")
-        for filename, content in context.config_files.items():
-            truncated = content[:5000] if len(content) > 5000 else content
-            prompt_parts.append(f"\n### {filename}:\n```\n{truncated}\n```\n")
+            # Execute each function call
+            function_response_parts = []
+            for fc in response.function_calls:
+                if verbose:
+                    args_str = json.dumps(fc.args) if fc.args else "{}"
+                    print(f"  [Tool] {fc.name}({args_str})")
 
-        return "".join(prompt_parts)
+                # Dispatch to executor
+                handler = getattr(executor, fc.name, None)
+                if handler:
+                    # Filter args to only include expected parameters
+                    result = handler(**fc.args)
+                else:
+                    result = {"error": f"Unknown tool: {fc.name}"}
 
-    def generate_dockerfile(self, context: ProjectContext) -> str:
-        prompt = self._build_prompt(context)
+                # Check if this is the terminal action
+                if fc.name == "write_dockerfile" and result.get("success"):
+                    return result["path"]
 
-        response = self.client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=SYSTEM_PROMPT + "\n\n" + prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.2,
-                max_output_tokens=2048,
-            ),
-        )
+                function_response_parts.append(
+                    types.Part.from_function_response(name=fc.name, response=result)
+                )
 
-        dockerfile_content = response.text.strip()
+            # Append function results to conversation
+            contents.append(types.Content(role="user", parts=function_response_parts))
 
-        if dockerfile_content.startswith("```"):
-            lines = dockerfile_content.split("\n")
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            dockerfile_content = "\n".join(lines)
-
-        return dockerfile_content
-
-    def generate_and_save(
-        self, context: ProjectContext, output_path: Optional[str] = None
-    ) -> str:
-        dockerfile_content = self.generate_dockerfile(context)
-
-        if output_path is None:
-            output_path = os.path.join(context.root_path, "Dockerfile")
-
-        with open(output_path, "w") as f:
-            f.write(dockerfile_content)
-            if not dockerfile_content.endswith("\n"):
-                f.write("\n")
-
-        return output_path
+        return "Max turns reached without completing Dockerfile generation"

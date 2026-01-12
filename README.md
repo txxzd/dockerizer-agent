@@ -23,25 +23,13 @@ agent-deployer build <path> -t <tag> -q          # Quiet mode (output URI only)
 agent-deployer build <path> -t <tag> --regenerate  # Force regenerate Dockerfile
 ```
 
-## Test: React Chatbot
-
-```bash
-agent-deployer build sample_frontend -t chatbot:latest
-docker run -d -p 3000:3000 --name chatbot chatbot:latest
-open http://localhost:3000
-docker stop chatbot && docker rm chatbot
-```
-
 ## Library Usage
 
 ```python
-from agent_deployer import ProjectAnalyzer, DockerfileAgent, DockerBuilder
-
-analyzer = ProjectAnalyzer("/path/to/project")
-context = analyzer.analyze()
+from agent_deployer import DockerfileAgent, DockerBuilder
 
 agent = DockerfileAgent()
-agent.generate_and_save(context)
+agent.run("/path/to/project")
 
 builder = DockerBuilder("/path/to/project")
 result = builder.build(tag="myapp:latest")

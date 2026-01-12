@@ -54,6 +54,8 @@ class DockerBuilder:
         cmd = [
             "docker",
             "build",
+            "--platform",
+            "linux/amd64",
             "-f",
             str(self.dockerfile_path),
         ]
